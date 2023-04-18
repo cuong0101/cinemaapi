@@ -66,33 +66,38 @@ namespace CinemaManagement.Controllers.WeuController
             using (var conn = _dapper.CreateConnection())
             {
                 var cus = await conn.QueryAsync<CustomerDto>(@"
-                Select * from MstCustomer where isDeleted = 0 and Email = @mail",new { mail = mail});
-                response = new WebEndUserDto<CustomerDto>(true, cus.FirstOrDefault(),200,"Success"); 
+                Select * from MstCustomer where isDeleted = 0 and Email = @mail", new { mail = mail });
+                response = new WebEndUserDto<CustomerDto>(true, cus.FirstOrDefault(), 200, "Success");
             }
             return response;
         }
 
-        [HttpPost("EditMyInfo")]
-        public async Task<WebEndUserDto<object>> EditMyInfo([FromForm]CustomerEditDto input)
+        [HttpPost("EditMyInfo"), Authorize]
+        public async Task<WebEndUserDto<object>> EditMyInfo([FromForm] CustomerEditDto input)
         {
             var response = new WebEndUserDto<object>(false, null, 500, "");
             var cus = _context.MstCustomer.Find(GetMyInfo().Result.Data.Id);
             if (await _context.MstCustomer.AnyAsync(e => e.Phone == input.phone)) response.Message = "Phone number is taken";
-            
+
             try
             {
-            Account account = new Account(CLOUD_NAME, API_KEY, API_SECRET);
-            cloudinary = new Cloudinary(account);
-                var uploadParams = new ImageUploadParams()
+                string imageUrl = null;
+                Account account = new Account(CLOUD_NAME, API_KEY, API_SECRET);
+                if (input?.image != null)
                 {
-                    File = new FileDescription(input.image.FileName, input.image.OpenReadStream()),
-                    PublicId = Guid.NewGuid().ToString(),
-                    Transformation = new Transformation().Crop("limit").Width(1000).Height(1000)
-                };
-                var uploadResult = await cloudinary.UploadAsync(uploadParams);
-                var imageUrl = uploadResult.Url.ToString();
+                    cloudinary = new Cloudinary(account);
+                    var uploadParams = new ImageUploadParams()
+                    {
+                        File = new FileDescription(input.image.FileName, input.image.OpenReadStream()),
+                        PublicId = Guid.NewGuid().ToString(),
+                        Transformation = new Transformation().Crop("limit").Width(1000).Height(1000)
+                    };
+                    var uploadResult = await cloudinary.UploadAsync(uploadParams);
+                    imageUrl = uploadResult.Url.ToString();
+                }
+                
                 cus.Name = string.IsNullOrWhiteSpace(input.name) || string.IsNullOrEmpty(input.name) ? GetMyInfo().Result.Data.Name : input.name;
-                cus.Image = imageUrl ?? GetMyInfo().Result.Data.Image;
+                cus.Image = string.IsNullOrWhiteSpace(imageUrl) ? GetMyInfo().Result.Data.Image : imageUrl;
                 cus.Address = string.IsNullOrWhiteSpace(input.address) || string.IsNullOrEmpty(input.address) ? GetMyInfo().Result.Data.Address : input.address;
                 cus.Phone = string.IsNullOrWhiteSpace(input.phone) || string.IsNullOrEmpty(input.phone) ? GetMyInfo().Result.Data.Phone : input.phone;
                 _context.MstCustomer.Update(cus);
@@ -156,7 +161,7 @@ namespace CinemaManagement.Controllers.WeuController
                 response.Status = true; response.Code = 200; response.Message = "Success";
                 response.Data = customer;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 response.Message = ex.Message;
             }
@@ -173,34 +178,36 @@ namespace CinemaManagement.Controllers.WeuController
         public async Task<WebEndUserDto<UserDto>> Login(CustomerLoginDto input)
         {
             var response = new WebEndUserDto<UserDto>(false, null, 500, "Email or Password is invalid");
-                var customer = await _context.MstCustomer.SingleOrDefaultAsync(e => e.Email == input.email);
-                if (customer == null) return response;
-                var hmac = new HMACSHA512(customer.PasswordSalt);
-                var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(input.password));
-                for (int i = 0; i < computedHash.Length; i++)
-                {
-                    if (computedHash[i] != customer.PasswordHash[i]) return response;
-                }
+            var customer = await _context.MstCustomer.SingleOrDefaultAsync(e => e.Email == input.email);
+            if (customer == null) return response;
+            var hmac = new HMACSHA512(customer.PasswordSalt);
+            var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(input.password));
+            for (int i = 0; i < computedHash.Length; i++)
+            {
+                if (computedHash[i] != customer.PasswordHash[i]) return response;
+            }
             try
             {
-            var claims = new List<Claim>
+                var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, input.email)
             };
-            var accessToken = _tokenService.GenerateAccessToken(claims);
-            var refreshToken = _tokenService.GenerateRefreshToken();
-            customer.RefreshToken = refreshToken;
-            customer.RefreshTokenExpiryTime = DateTime.Now.AddDays(7);
-            await _context.SaveChangesAsync();
-                response.Status = true; 
-                response.Data = new UserDto(){
-                        Username = customer.Name,
-                        AccessToken = accessToken,
-                        RefreshToken = refreshToken};
+                var accessToken = _tokenService.GenerateAccessToken(claims);
+                var refreshToken = _tokenService.GenerateRefreshToken();
+                customer.RefreshToken = refreshToken;
+                customer.RefreshTokenExpiryTime = DateTime.Now.AddDays(7);
+                await _context.SaveChangesAsync();
+                response.Status = true;
+                response.Data = new UserDto()
+                {
+                    Username = customer.Name,
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken
+                };
                 response.Code = 200;
                 response.Message = "Success";
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 response.Message = ex.Message;
             }
