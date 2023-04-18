@@ -17,7 +17,7 @@ namespace CinemaManagement.Services
         private readonly SymmetricSecurityKey _key;
         public TokenService(IConfiguration config)
         {
-            _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["TokenKey"]));
+            _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:ServerSecret"]));
         }
 
         public string CreateToken(MstCustomer cus)

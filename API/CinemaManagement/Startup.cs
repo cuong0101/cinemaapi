@@ -1,3 +1,4 @@
+using Abp.Extensions;
 using CinemaManagement.Data;
 using CinemaManagement.Entities;
 using CinemaManagement.Extentions;
@@ -9,7 +10,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CinemaManagement
 {
@@ -63,17 +66,17 @@ namespace CinemaManagement
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-                app.UseSwagger();
-                app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinemaManagement v1"));
-            }
+            app.UseDeveloperExceptionPage();
+            app.UseSwagger();
+            app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinemaManagement v1"));
 
             app.UseHttpsRedirection();
-
             app.UseRouting();
-            app.UseCors(x => x.AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithOrigins("https://localhost:4200"));
+            app.UseCors(x => x.AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithOrigins(
+                Configuration["App:CorsOrigins"]
+                .Split(",", StringSplitOptions.RemoveEmptyEntries)
+                .Select(o => o.RemovePostFix("/"))
+                .ToArray()));
 
             app.UseStaticFiles(new StaticFileOptions
             {
